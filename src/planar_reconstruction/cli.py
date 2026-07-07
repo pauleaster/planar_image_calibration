@@ -1,24 +1,17 @@
 """Command-line interface for the planar reconstruction workflow.
 
-The initial CLI focuses on argument parsing and validation so the project has a
-stable Windows entry point before the frame-processing pipeline is added.
+The CLI is intentionally thin: it parses arguments, creates the frame stream,
+and delegates all processing to the canonical reconstruction pipeline.
 """
-
-# pylint: disable=no-member
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Sequence
-from typing import Any, cast
 
-import cv2
-
-from planar_reconstruction.quality import compute_sharpness_score
-
-CV2 = cast(Any, cv2)
+from planar_reconstruction.reconstruct import ReconstructionOptions, reconstruct_frames
+from planar_reconstruction.stream import iter_video_frames
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,6 +53,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=100.0,
         help="Minimum sharpness score for selecting the reference frame. Default: 100.0.",
     )
+    parser.add_argument(
+        "--min-inliers",
+        type=int,
+        default=4,
+        help="Minimum inlier count required to accept a registration. Default: 4.",
+    )
+    parser.add_argument(
+        "--min-inlier-ratio",
+        type=float,
+        default=0.5,
+        help="Minimum inlier ratio required to accept a registration. Default: 0.5.",
+    )
+    parser.add_argument(
+        "--save-debug-images",
+        action="store_true",
+        help="Save per-frame debug images under output_dir/debug_images.",
+    )
+    parser.add_argument(
+        "--debug-image-limit",
+        type=int,
+        default=100,
+        help="Maximum number of debug images to write when enabled. Default: 100.",
+    )
     return parser
 
 
@@ -71,10 +87,16 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--max-frames must be greater than zero.")
     if args.min_sharpness < 0:
         raise ValueError("--min-sharpness must be non-negative.")
+    if args.min_inliers <= 0:
+        raise ValueError("--min-inliers must be greater than zero.")
+    if not 0.0 <= args.min_inlier_ratio <= 1.0:
+        raise ValueError("--min-inlier-ratio must be between 0.0 and 1.0.")
+    if args.debug_image_limit <= 0:
+        raise ValueError("--debug-image-limit must be greater than zero.")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse CLI arguments and run the initial reconstruction workflow."""
+    """Parse CLI arguments and run the canonical reconstruction workflow."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -85,72 +107,40 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    capture = CV2.VideoCapture(str(args.video))
-    if not capture.isOpened():
-        parser.error(f"Could not open video: {args.video}")
-
-    frames_read = 0
-    frames_processed = 0
-    frames_accepted = 0
-    frames_rejected = 0
-    processed_sharpness_scores: list[float] = []
-    reference_frame_path = args.output_dir / "reference_frame.png"
-    reference_frame_saved = False
-
-    while frames_read < args.max_frames:
-        ok, frame = capture.read()
-        if not ok:
-            break
-
-        frame_index = frames_read
-        frames_read += 1
-
-        if frame_index % args.frame_step != 0:
-            continue
-
-        frames_processed += 1
-        sharpness = compute_sharpness_score(frame)
-        processed_sharpness_scores.append(sharpness)
-
-        if sharpness >= args.min_sharpness:
-            frames_accepted += 1
-            if not reference_frame_saved:
-                CV2.imwrite(str(reference_frame_path), frame)
-                reference_frame_saved = True
-        else:
-            frames_rejected += 1
-
-    capture.release()
-
-    mean_sharpness = (
-        float(sum(processed_sharpness_scores) / len(processed_sharpness_scores))
-        if processed_sharpness_scores
-        else 0.0
+    frame_packets = iter_video_frames(
+        args.video,
+        max_frames=args.max_frames,
+        frame_step=args.frame_step,
+    )
+    options = ReconstructionOptions(
+        output_dir=args.output_dir,
+        min_sharpness=args.min_sharpness,
+        min_inliers=args.min_inliers,
+        min_inlier_ratio=args.min_inlier_ratio,
+        save_debug_images=args.save_debug_images,
+        debug_image_limit=args.debug_image_limit,
     )
 
-    summary = {
-        "video_path": str(args.video),
-        "frames_read": frames_read,
-        "frames_processed": frames_processed,
-        "frames_accepted": frames_accepted,
-        "frames_rejected": frames_rejected,
-        "min_sharpness": args.min_sharpness,
-        "mean_sharpness": mean_sharpness,
-        "reference_frame_saved": reference_frame_saved,
-        "reference_frame_path": str(reference_frame_path) if reference_frame_saved else None,
-    }
-
-    summary_path = args.output_dir / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    try:
+        result = reconstruct_frames(frame_packets, options)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     print(f"Video input: {args.video}")
     print(f"Output directory: {args.output_dir}")
-    print(f"Frames read: {frames_read}")
-    print(f"Frames processed: {frames_processed}")
-    print(f"Frames accepted: {frames_accepted}")
-    print(f"Frames rejected: {frames_rejected}")
-    print(f"Reference frame saved: {reference_frame_saved}")
-    print(f"Summary written: {summary_path}")
+    print(f"Frames read: {result.frames_read}")
+    print(f"Frames processed: {result.frames_processed}")
+    print(f"Frames accepted: {result.frames_accepted}")
+    print(f"Frames rejected: {result.frames_rejected}")
+    print(f"Mean sharpness: {result.mean_sharpness:.2f}")
+    print(f"Mean inlier ratio: {result.mean_inlier_ratio:.3f}")
+    print(f"Reference frame saved: {result.reference_frame_saved}")
+    print(f"Reference frame path: {result.reference_frame_path}")
+    print(f"Final reconstruction path: {result.output_image_path}")
+    print(f"Summary written: {result.summary_path}")
+    print(f"Diagnostics summary written: {result.diagnostics_summary_path}")
+    if result.debug_images_dir is not None:
+        print(f"Debug images directory: {result.debug_images_dir}")
     return 0
 
 
