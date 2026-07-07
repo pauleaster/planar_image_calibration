@@ -99,7 +99,6 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(root)
         layout.addWidget(self._build_paths_group())
         layout.addWidget(self._build_options_group())
-        layout.addLayout(self._build_actions_row())
         layout.addWidget(self._build_status_group())
         layout.addWidget(self._build_image_group())
         layout.addWidget(self._build_summary_group())
@@ -118,6 +117,10 @@ class MainWindow(QMainWindow):
         self.video_button.clicked.connect(self._select_video)
         self.output_button = QPushButton("Select Output Folder")
         self.output_button.clicked.connect(self._select_output_dir)
+        self.run_button = QPushButton("Run / Go Reconstruction")
+        self.run_button.clicked.connect(self._run_reconstruction)
+        self.run_button.setMinimumHeight(38)
+        self.run_button.setStyleSheet("font-weight: 700;")
 
         grid.addWidget(QLabel("Video"), 0, 0)
         grid.addWidget(self.video_edit, 0, 1)
@@ -126,6 +129,9 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("Output"), 1, 0)
         grid.addWidget(self.output_edit, 1, 1)
         grid.addWidget(self.output_button, 1, 2)
+
+        grid.addWidget(QLabel("Run"), 2, 0)
+        grid.addWidget(self.run_button, 2, 1, 1, 2)
         return group
 
     def _build_options_group(self) -> QGroupBox:
@@ -169,18 +175,10 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.min_inlier_ratio_spin, 2, 1)
         return group
 
-    def _build_actions_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        self.run_button = QPushButton("Run Reconstruction")
-        self.run_button.clicked.connect(self._run_reconstruction)
-        row.addWidget(self.run_button)
-        row.addStretch(1)
-        return row
-
     def _build_status_group(self) -> QGroupBox:
         group = QGroupBox("Status")
         layout = QVBoxLayout(group)
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel("Ready. Select a video and output folder, then click 'Run / Go Reconstruction'.")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         return group
@@ -223,14 +221,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def _run_reconstruction(self) -> None:
         video_path = Path(self.video_edit.text().strip())
-        output_dir = Path(self.output_edit.text().strip())
+        output_text = self.output_edit.text().strip()
 
         if not video_path.exists():
             QMessageBox.warning(self, "Missing Input", "Please select a valid video file.")
             return
-        if not output_dir:
+        if not output_text:
             QMessageBox.warning(self, "Missing Output", "Please select an output directory.")
             return
+        output_dir = Path(output_text)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         self.run_button.setEnabled(False)
         self.status_label.setText("Starting background worker...")
