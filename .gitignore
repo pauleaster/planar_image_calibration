@@ -40,13 +40,33 @@ ENV/
 .tox/
 .nox/
 htmlcov/
+coverage.xml
 
 # Jupyter
 .ipynb_checkpoints/
 
 # IDEs
 .vscode/
+.idea/
+*.code-workspace
 
 # OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# Local caches and logs
+.cache/
+*.log
+
+# Project data generated during reconstruction runs
+data/output/
+
+# Local input media copied into the repo for experiments
+data/input/*.mp4
+data/input/*.mov
+data/input/*.avi
+data/input/*.mkv
+
+# Development markdown files
+.md/

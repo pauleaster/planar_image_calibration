@@ -1,0 +1,69 @@
+# pyproject.toml is the Python packaging/build config file.
+# If you come from Rust, think of it as a mix of:
+# - Cargo.toml package metadata
+# - build-system selection
+# - tool configuration in one place
+
+[build-system]
+# Setuptools is the standard, low-friction choice for a small scientific Python project.
+# This tells pip how to build/install the project, including editable installs.
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# These fields are the closest equivalent to Cargo package metadata.
+name = "planar-image-calibration-workbench"
+version = "0.1.0"
+description = "Planar image reconstruction and calibration-style diagnostics from handheld video."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Paul Easter" },
+]
+keywords = [
+  "opencv",
+  "computer-vision",
+  "image-processing",
+  "calibration",
+  "pyside6",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+# Keep the install dependencies here so `pip install -e .` brings in the runtime stack.
+# Dev-only tools can stay in an optional extra and be installed with `pip install -e ".[dev]"`.
+dependencies = [
+  "numpy",
+  "opencv-python",
+  "PySide6",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+# Extra dependencies for local development and testing.
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+# Use the common "src/" layout so importable code stays separate from project files.
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Later, when `src/planar_reconstruction/cli.py` exists, you can add:
+#
+# [project.scripts]
+# planar-reconstruct = "planar_reconstruction.cli:main"
+#
+# That is roughly analogous to exposing a binary target in Cargo.
