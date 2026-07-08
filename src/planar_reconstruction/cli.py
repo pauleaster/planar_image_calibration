@@ -7,11 +7,24 @@ and delegates all processing to the canonical reconstruction pipeline.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
 from planar_reconstruction.reconstruct import ReconstructionOptions, reconstruct_frames
 from planar_reconstruction.stream import iter_video_frames
+
+
+def _build_run_output_dir(base_output_dir: Path) -> Path:
+    """Create a unique timestamped output directory for one run."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = base_output_dir / timestamp
+    suffix = 1
+    while candidate.exists():
+        candidate = base_output_dir / f"{timestamp}_{suffix:02d}"
+        suffix += 1
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,13 +40,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--video",
         type=Path,
         required=True,
-        help="Path to the input video file, for example data\\input\\painting_video.mp4.",
+        help="Path to the input video file, for example data\\input\\example_video.mp4.",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
-        help="Directory where outputs such as summary.json will be written.",
+        default=Path("./data/output"),
+        help=(
+            "Directory where outputs such as summary.json will be written. "
+            "Default: ./data/output."
+        ),
     )
     parser.add_argument(
         "--frame-step",
@@ -106,6 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(str(exc))
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    run_output_dir = _build_run_output_dir(args.output_dir)
 
     frame_packets = iter_video_frames(
         args.video,
@@ -113,7 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         frame_step=args.frame_step,
     )
     options = ReconstructionOptions(
-        output_dir=args.output_dir,
+        output_dir=run_output_dir,
         min_sharpness=args.min_sharpness,
         min_inliers=args.min_inliers,
         min_inlier_ratio=args.min_inlier_ratio,
@@ -127,7 +144,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(str(exc))
 
     print(f"Video input: {args.video}")
-    print(f"Output directory: {args.output_dir}")
+    print(f"Output base directory: {args.output_dir}")
+    print(f"Run output directory: {run_output_dir}")
     print(f"Frames read: {result.frames_read}")
     print(f"Frames processed: {result.frames_processed}")
     print(f"Frames accepted: {result.frames_accepted}")

@@ -43,7 +43,8 @@ def test_cli_main_smoke_with_monkeypatched_pipeline(
     def fake_reconstruct_frames(frame_packets, options):
         packets = list(frame_packets)
         assert len(packets) == 2
-        assert options.output_dir == tmp_path
+        assert options.output_dir.parent == tmp_path
+        assert options.output_dir.exists()
         return _FakeResult()
 
     monkeypatch.setattr(cli, "iter_video_frames", fake_iter_video_frames)
@@ -65,5 +66,6 @@ def test_cli_main_smoke_with_monkeypatched_pipeline(
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "Video input:" in out
+    assert "Run output directory:" in out
     assert "Frames read:" in out
     assert "Summary written:" in out

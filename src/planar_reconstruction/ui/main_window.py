@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
@@ -28,6 +29,18 @@ from planar_reconstruction.reconstruct import (
     reconstruct_frames,
 )
 from planar_reconstruction.stream import iter_video_frames
+
+
+def _build_run_output_dir(base_output_dir: Path) -> Path:
+    """Create a unique timestamped output directory for one run."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = base_output_dir / timestamp
+    suffix = 1
+    while candidate.exists():
+        candidate = base_output_dir / f"{timestamp}_{suffix:02d}"
+        suffix += 1
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
 
 
 class ReconstructionWorker(QObject):
@@ -97,6 +110,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Planar Image Calibration Workbench")
         self.resize(980, 720)
 
+        self._default_input_dir = Path("./data/input")
+        self._default_output_dir = Path("./data/output")
+
         self._thread: QThread | None = None
         self._worker: ReconstructionWorker | None = None
 
@@ -117,6 +133,7 @@ class MainWindow(QMainWindow):
         self.video_edit.setPlaceholderText("Select input video file...")
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Select output directory...")
+        self.output_edit.setText(str(self._default_output_dir))
 
         self.video_button = QPushButton("Select Video")
         self.video_button.clicked.connect(self._select_video) # pylint: disable=no-member
@@ -212,10 +229,11 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _select_video(self) -> None:
+        start_dir = self._default_input_dir if self._default_input_dir.exists() else Path.cwd()
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Video",
-            str(Path.cwd()),
+            str(start_dir),
             "Video Files (*.mp4 *.mov *.avi *.mkv);;All Files (*)",
         )
         if path:
@@ -223,8 +241,12 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _select_output_dir(self) -> None:
+        current_output = self.output_edit.text().strip()
+        start_dir = Path(current_output) if current_output else self._default_output_dir
+        if not start_dir.exists():
+            start_dir = Path.cwd()
         path = QFileDialog.getExistingDirectory(
-            self, "Select Output Folder", str(Path.cwd())
+            self, "Select Output Folder", str(start_dir)
         )
         if path:
             self.output_edit.setText(path)
@@ -244,17 +266,18 @@ class MainWindow(QMainWindow):
                 self, "Missing Output", "Please select an output directory."
             )
             return
-        output_dir = Path(output_text)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        base_output_dir = Path(output_text)
+        base_output_dir.mkdir(parents=True, exist_ok=True)
+        run_output_dir = _build_run_output_dir(base_output_dir)
 
         self.run_button.setEnabled(False)
-        self.status_label.setText("Starting background worker...")
+        self.status_label.setText(f"Starting background worker in {run_output_dir}...")
         self.summary_text.clear()
 
         self._thread = QThread(self)
         self._worker = ReconstructionWorker(
             video_path=video_path,
-            output_dir=output_dir,
+            output_dir=run_output_dir,
             frame_step=self.frame_step_spin.value(),
             max_frames=self.max_frames_spin.value(),
             min_sharpness=self.min_sharpness_spin.value(),
