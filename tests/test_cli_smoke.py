@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
+
+import numpy as np
+from pytest import CaptureFixture, MonkeyPatch
 
 from planar_reconstruction import cli
+from planar_reconstruction.reconstruct import ReconstructionOptions
 from planar_reconstruction.stream import FramePacket
 
 
@@ -28,19 +33,21 @@ class _FakeResult:
 
 
 def test_cli_main_smoke_with_monkeypatched_pipeline(
-    monkeypatch, tmp_path: Path, capsys
+    monkeypatch: MonkeyPatch, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     """CLI should parse args, invoke pipeline path, and print summary lines."""
     video_path = tmp_path / "input.mp4"
     video_path.write_bytes(b"not-a-real-video")
 
-    def fake_iter_video_frames(*_args, **_kwargs):
+    def fake_iter_video_frames(*_args: object, **_kwargs: object) -> list[FramePacket]:
         return [
-            FramePacket(index=0, timestamp_ms=0.0, frame=None),
-            FramePacket(index=1, timestamp_ms=33.3, frame=None),
+            FramePacket(index=0, timestamp_ms=0.0, frame=np.zeros((8, 8), dtype=np.uint8)),
+            FramePacket(index=1, timestamp_ms=33.3, frame=np.zeros((8, 8), dtype=np.uint8)),
         ]
 
-    def fake_reconstruct_frames(frame_packets, options):
+    def fake_reconstruct_frames(
+        frame_packets: Iterable[FramePacket], options: ReconstructionOptions
+    ) -> _FakeResult:
         packets = list(frame_packets)
         assert len(packets) == 2
         assert options.output_dir.parent == tmp_path
