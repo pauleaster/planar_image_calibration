@@ -63,6 +63,9 @@ python -m planar_reconstruction.cli `
 	--frame-step 5
 ```
 
+Note: `--output-dir` is the base directory. Each run is written to a unique
+timestamped subfolder (for example `data\output\20260708_161530\`).
+
 Common tuning options:
 
 - `--min-sharpness`
@@ -85,18 +88,25 @@ In the UI:
 2. Select output folder
 3. Click `Run`
 4. Review status, final image preview, and summary metrics
+5. (Optional) Click `Straighten Image` in the preview panel to open guided
+	corner selection and save a perspective-straightened result
 
 The UI runs reconstruction in a background `QThread` so the window stays responsive.
 
 ## Outputs
 
-Typical files written under your chosen output directory:
+Typical files written under your chosen output base directory:
 
-- `reference_frame.png`
-- `final_reconstruction.png`
-- `summary.json`
-- `diagnostics_summary.json`
-- `debug_images/` (only when `--save-debug-images` is enabled)
+- `<timestamp>/reference_frame.png`
+- `<timestamp>/final_reconstruction.png`
+- `<timestamp>/summary.json`
+- `<timestamp>/diagnostics_summary.json`
+- `<timestamp>/debug_images/` (only when `--save-debug-images` is enabled)
+
+When you use the straighten workflow in the UI, an additional image is saved
+next to the current preview source image:
+
+- `*_straightened.png` (or matching source extension)
 
 Example `summary.json` fields:
 
@@ -156,20 +166,8 @@ Current tests include:
 Dependency direction:
 
 - core pipeline modules in `src/planar_reconstruction/`
+- geometric transformation services in `src/planar_reconstruction/transformations/`
 - CLI calls core pipeline
-- UI calls core pipeline
+- UI calls core pipeline and transformation services
 
 The UI and CLI do not duplicate reconstruction logic.
-
-## Non-Goals
-
-This repository is intentionally not:
-
-- a full 3D reconstruction system
-- a medical imaging tool
-- production-grade real-time software
-- a camera SDK integration project (v1)
-- a networking or distributed-processing system
-
-WSL can be used as a convenience shell, but runtime execution is expected under
-Windows Python for both CLI and UI.
