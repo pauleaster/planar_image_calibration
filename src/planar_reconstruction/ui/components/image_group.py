@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QGroupBox, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 
 class ImageGroup(QGroupBox):
@@ -15,6 +15,14 @@ class ImageGroup(QGroupBox):
     def __init__(self) -> None:
         super().__init__("Final Reconstruction")
         layout = QVBoxLayout(self)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        self.straighten_button = QPushButton("Straighten Image")
+        self.straighten_button.setEnabled(False)
+        button_row.addWidget(self.straighten_button)
+        layout.addLayout(button_row)
+
         self.image_label = QLabel("No image yet")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumHeight(260)
@@ -24,12 +32,20 @@ class ImageGroup(QGroupBox):
         layout.addWidget(self.image_label)
 
         self._source_pixmap = QPixmap()
+        self._current_image_path: Path | None = None
+
+    @property
+    def current_image_path(self) -> Path | None:
+        """Return the image path currently shown in the preview, if any."""
+        return self._current_image_path
 
     def clear(self, message: str) -> None:
         """Reset preview state and show a status message."""
         self._source_pixmap = QPixmap()
+        self._current_image_path = None
         self.image_label.setPixmap(QPixmap())
         self.image_label.setText(message)
+        self.straighten_button.setEnabled(False)
 
     def set_image(self, image_path: Path) -> bool:
         """Load and display an image path. Returns False on load failure."""
@@ -39,6 +55,8 @@ class ImageGroup(QGroupBox):
             return False
 
         self._source_pixmap = pixmap
+        self._current_image_path = image_path
+        self.straighten_button.setEnabled(True)
         self._render_scaled_pixmap()
         return True
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
@@ -21,6 +22,7 @@ from planar_reconstruction.reconstruct import (
     reconstruct_frames,
 )
 from planar_reconstruction.stream import iter_video_frames
+from planar_reconstruction.ui.straighten_dialog import StraightenImageDialog
 from planar_reconstruction.ui.components import (
     ImageGroup,
     OptionsGroup,
@@ -114,6 +116,7 @@ class MainWindow(QMainWindow):
 
         self._thread: QThread | None = None
         self._worker: ReconstructionWorker | None = None
+        self._straighten_dialogs: list[StraightenImageDialog] = []
 
         self.paths_group = PathsGroup(default_output_dir=self._default_output_dir)
         self.options_group = OptionsGroup()
@@ -130,13 +133,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.summary_group)
         self.setCentralWidget(root)
 
-        self.paths_group.video_button.clicked.connect(self._select_video) # pylint: disable=no-member
-        self.paths_group.output_button.clicked.connect(self._select_output_dir) # pylint: disable=no-member
-        self.paths_group.run_button.clicked.connect(self._run_reconstruction) # pylint: disable=no-member
+        self.paths_group.video_button.clicked.connect(self._select_video)  # pylint: disable=no-member
+        self.paths_group.output_button.clicked.connect(self._select_output_dir)  # pylint: disable=no-member
+        self.paths_group.run_button.clicked.connect(self._run_reconstruction)  # pylint: disable=no-member
+        self.image_group.straighten_button.clicked.connect(self._open_straighten_dialog)  # pylint: disable=no-member
 
     @Slot()
     def _select_video(self) -> None:
-        start_dir = self._default_input_dir if self._default_input_dir.exists() else Path.cwd()
+        start_dir = (
+            self._default_input_dir if self._default_input_dir.exists() else Path.cwd()
+        )
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Video",
@@ -178,7 +184,9 @@ class MainWindow(QMainWindow):
         run_output_dir = _build_run_output_dir(base_output_dir)
 
         self.paths_group.run_button.setEnabled(False)
-        self.status_group.set_status(f"Starting background worker in {run_output_dir}...")
+        self.status_group.set_status(
+            f"Starting background worker in {run_output_dir}..."
+        )
         self.summary_group.clear()
 
         self._thread = QThread(self)
@@ -193,12 +201,12 @@ class MainWindow(QMainWindow):
         )
         self._worker.moveToThread(self._thread)
 
-        self._thread.started.connect(self._worker.run) # pylint: disable=no-member
-        self._worker.progress.connect(self._set_status)
-        self._worker.succeeded.connect(self._handle_success)
-        self._worker.failed.connect(self._handle_error)
-        self._worker.finished.connect(self._cleanup_thread)
-        self._worker.finished.connect(self._thread.quit)
+        self._thread.started.connect(self._worker.run)  # pylint: disable=no-member
+        self._worker.progress.connect(self._set_status)  # pylint: disable=no-member
+        self._worker.succeeded.connect(self._handle_success)  # pylint: disable=no-member
+        self._worker.failed.connect(self._handle_error)  # pylint: disable=no-member
+        self._worker.finished.connect(self._cleanup_thread)  # pylint: disable=no-member
+        self._worker.finished.connect(self._thread.quit)  # pylint: disable=no-member
 
         self._thread.start()
 
@@ -227,6 +235,45 @@ class MainWindow(QMainWindow):
     def _handle_error(self, message: str) -> None:
         self.status_group.set_status("Reconstruction failed.")
         QMessageBox.critical(self, "Reconstruction Error", message)
+
+    @Slot()
+    def _open_straighten_dialog(self) -> None:
+        image_path = self.image_group.current_image_path
+        if image_path is None or not image_path.exists():
+            QMessageBox.warning(
+                self,
+                "Missing Image",
+                "No generated output image is available to straighten.",
+            )
+            return
+
+        try:
+            dialog = StraightenImageDialog(image_path=image_path, parent=self)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Open Error", str(exc))
+            return
+
+        dialog.finished.connect(partial(self._on_straighten_dialog_finished, dialog))  # pylint: disable=no-member
+        self._straighten_dialogs.append(dialog)
+        dialog.show()
+
+    def _on_straighten_dialog_finished(
+        self, dialog: StraightenImageDialog, _result: int
+    ) -> None:
+        """Handle straighten dialog closure and release retained references."""
+        straightened_path = dialog.straightened_image_path
+        if straightened_path is not None and straightened_path.exists():
+            self.image_group.set_image(straightened_path)
+            self.status_group.set_status(
+                f"Loaded straightened image: {straightened_path.name}"
+            )
+        self._discard_straighten_dialog(dialog)
+
+    def _discard_straighten_dialog(self, dialog: StraightenImageDialog) -> None:
+        """Remove closed straighten dialog references."""
+        self._straighten_dialogs = [
+            item for item in self._straighten_dialogs if item is not dialog
+        ]
 
     @Slot()
     def _cleanup_thread(self) -> None:
