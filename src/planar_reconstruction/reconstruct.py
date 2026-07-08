@@ -20,6 +20,12 @@ from planar_reconstruction.homography import estimate_homography
 from planar_reconstruction.quality import compute_sharpness_score
 from planar_reconstruction.stream import FramePacket
 
+def _empty_sharpness_scores() -> list[float]:
+    return []
+
+def _empty_frame_diagnostics() -> list[FrameDiagnostics]:
+    return []
+
 
 @dataclass(frozen=True)
 class FrameDiagnostics:
@@ -51,8 +57,8 @@ class ReconstructionResult:
     summary_path: Path | None
     diagnostics_summary_path: Path | None
     debug_images_dir: Path | None
-    sharpness_scores: list[float] = field(default_factory=list)
-    diagnostics: list[FrameDiagnostics] = field(default_factory=list)
+    sharpness_scores: list[float] = field(default_factory=_empty_sharpness_scores)
+    diagnostics: list[FrameDiagnostics] = field(default_factory=_empty_frame_diagnostics)
 
 
 @dataclass(frozen=True)
@@ -68,7 +74,6 @@ class ReconstructionOptions:
     ransac_reproj_threshold: float = 5.0
     save_debug_images: bool = False
     debug_image_limit: int = 100
-
 
 
 def reconstruct_frames(
@@ -94,7 +99,9 @@ def reconstruct_frames(
     reference_frame_path = options.output_dir / "reference_frame.png"
     output_image_path = options.output_dir / "final_reconstruction.png"
     diagnostics_summary_path = options.output_dir / "diagnostics_summary.json"
-    debug_images_dir = options.output_dir / "debug_images" if options.save_debug_images else None
+    debug_images_dir = (
+        options.output_dir / "debug_images" if options.save_debug_images else None
+    )
     debug_images_written = 0
 
     fused_accumulator: np.ndarray | None = None
@@ -117,15 +124,23 @@ def reconstruct_frames(
         inlier_ratio = 0.0
 
         if sharpness_ok and not reference_frame_saved:
-            cv2.imwrite(str(reference_frame_path), packet.frame)  # pylint: disable=no-member
+            cv2.imwrite(str(reference_frame_path), packet.frame)
             reference_frame_saved = True
-            reference_features = detect_features(packet.frame, max_features=options.max_features)
+            reference_features = detect_features(
+                packet.frame, max_features=options.max_features
+            )
             reference_size = (packet.frame.shape[1], packet.frame.shape[0])
             fused_accumulator = packet.frame.astype(np.float32)
             fused_frame_count = 1
             accepted = True
-        elif sharpness_ok and reference_features is not None and reference_size is not None:
-            current_features = detect_features(packet.frame, max_features=options.max_features)
+        elif (
+            sharpness_ok
+            and reference_features is not None
+            and reference_size is not None
+        ):
+            current_features = detect_features(
+                packet.frame, max_features=options.max_features
+            )
             match_result = match_features(
                 current_features,
                 reference_features,
@@ -147,7 +162,7 @@ def reconstruct_frames(
                     inlier_count >= options.min_inliers
                     and inlier_ratio >= options.min_inlier_ratio
                 ):
-                    warped = cv2.warpPerspective(  # pylint: disable=no-member
+                    warped = cv2.warpPerspective(
                         packet.frame,
                         homography_result.matrix,
                         reference_size,
@@ -173,7 +188,7 @@ def reconstruct_frames(
             debug_images_dir.mkdir(parents=True, exist_ok=True)
             label = "accepted" if accepted else "rejected"
             debug_image_path = debug_images_dir / f"{packet.index:06d}_{label}.png"
-            cv2.imwrite(str(debug_image_path), packet.frame)  # pylint: disable=no-member
+            cv2.imwrite(str(debug_image_path), packet.frame)
             debug_images_written += 1
 
         diagnostics.append(
@@ -188,14 +203,22 @@ def reconstruct_frames(
             )
         )
 
-    mean_sharpness = float(sum(sharpness_values) / len(sharpness_values)) if sharpness_values else 0.0
-    mean_inlier_ratio = float(sum(inlier_ratios) / len(inlier_ratios)) if inlier_ratios else 0.0
+    mean_sharpness = (
+        float(sum(sharpness_values) / len(sharpness_values))
+        if sharpness_values
+        else 0.0
+    )
+    mean_inlier_ratio = (
+        float(sum(inlier_ratios) / len(inlier_ratios)) if inlier_ratios else 0.0
+    )
     summary_path = options.output_dir / "summary.json"
 
     saved_output_image: Path | None = None
     if fused_accumulator is not None and fused_frame_count > 0:
-        fused_image = np.clip(fused_accumulator / float(fused_frame_count), 0, 255).astype(np.uint8)
-        cv2.imwrite(str(output_image_path), fused_image)  # pylint: disable=no-member
+        fused_image = np.clip(
+            fused_accumulator / float(fused_frame_count), 0, 255
+        ).astype(np.uint8)
+        cv2.imwrite(str(output_image_path), fused_image)
         saved_output_image = output_image_path
 
     summary = ReconstructionResult(
@@ -221,10 +244,9 @@ def reconstruct_frames(
     return summary
 
 
-
 def _write_summary_json(summary: ReconstructionResult) -> None:
     """Write a compact summary JSON next to the output images."""
-    data = {
+    data: dict[str, object] = {
         "frames_read": summary.frames_read,
         "frames_processed": summary.frames_processed,
         "frames_accepted": summary.frames_accepted,
@@ -232,8 +254,12 @@ def _write_summary_json(summary: ReconstructionResult) -> None:
         "mean_sharpness": summary.mean_sharpness,
         "mean_inlier_ratio": summary.mean_inlier_ratio,
         "reference_frame_saved": summary.reference_frame_saved,
-        "reference_frame_path": str(summary.reference_frame_path) if summary.reference_frame_path else None,
-        "output_image": str(summary.output_image_path) if summary.output_image_path else None,
+        "reference_frame_path": (
+            str(summary.reference_frame_path) if summary.reference_frame_path else None
+        ),
+        "output_image": (
+            str(summary.output_image_path) if summary.output_image_path else None
+        ),
         "fused_frame_count": summary.fused_frame_count,
     }
     if summary.summary_path is not None:
@@ -249,7 +275,7 @@ def _write_diagnostics_summary_json(
     debug_images_written: int,
 ) -> None:
     """Write detailed diagnostics, traces, and thresholds for one run."""
-    data = {
+    data: dict[str, object] = {
         "frames_read": summary.frames_read,
         "frames_processed": summary.frames_processed,
         "frames_accepted": summary.frames_accepted,
@@ -263,12 +289,18 @@ def _write_diagnostics_summary_json(
             "min_inlier_ratio": options.min_inlier_ratio,
         },
         "reference_frame_saved": summary.reference_frame_saved,
-        "reference_frame_path": str(summary.reference_frame_path) if summary.reference_frame_path else None,
-        "output_image": str(summary.output_image_path) if summary.output_image_path else None,
+        "reference_frame_path": (
+            str(summary.reference_frame_path) if summary.reference_frame_path else None
+        ),
+        "output_image": (
+            str(summary.output_image_path) if summary.output_image_path else None
+        ),
         "fused_frame_count": summary.fused_frame_count,
         "debug_images": {
             "enabled": options.save_debug_images,
-            "directory": str(summary.debug_images_dir) if summary.debug_images_dir else None,
+            "directory": (
+                str(summary.debug_images_dir) if summary.debug_images_dir else None
+            ),
             "written": debug_images_written,
             "limit": options.debug_image_limit,
         },

@@ -54,6 +54,11 @@ dev = [
   "pytest",
 ]
 
+[project.scripts]
+# Expose the existing CLI and desktop UI as installed commands.
+planar-reconstruct = "planar_reconstruction.cli:main"
+planar-reconstruct-ui = "planar_reconstruction.app:main"
+
 [tool.setuptools]
 # Use the common "src/" layout so importable code stays separate from project files.
 package-dir = {"" = "src"}
@@ -61,9 +66,17 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# Later, when `src/planar_reconstruction/cli.py` exists, you can add:
-#
-# [project.scripts]
-# planar-reconstruct = "planar_reconstruction.cli:main"
-#
-# That is roughly analogous to exposing a binary target in Cargo.
+[tool.pylint.main]
+extension-pkg-allow-list = [
+  "PySide6",
+  "PySide6.QtCore",
+  "PySide6.QtGui",
+  "PySide6.QtWidgets",
+  "cv2",
+]
+
+[tool.pylint.typecheck]
+generated-members = [
+  "PySide6.*",
+  "cv2.*",
+]

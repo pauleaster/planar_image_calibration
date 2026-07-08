@@ -5,12 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -23,7 +22,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from planar_reconstruction.reconstruct import ReconstructionOptions, ReconstructionResult, reconstruct_frames
+from planar_reconstruction.reconstruct import (
+    ReconstructionOptions,
+    ReconstructionResult,
+    reconstruct_frames,
+)
 from planar_reconstruction.stream import iter_video_frames
 
 
@@ -67,7 +70,9 @@ class ReconstructionWorker(QObject):
                     max_frames=self._max_frames,
                 )
             )
-            self.progress.emit(f"Loaded {len(packets)} frames. Running reconstruction...")
+            self.progress.emit(
+                f"Loaded {len(packets)} frames. Running reconstruction..."
+            )
 
             options = ReconstructionOptions(
                 output_dir=self._output_dir,
@@ -114,11 +119,11 @@ class MainWindow(QMainWindow):
         self.output_edit.setPlaceholderText("Select output directory...")
 
         self.video_button = QPushButton("Select Video")
-        self.video_button.clicked.connect(self._select_video)
+        self.video_button.clicked.connect(self._select_video) # pylint: disable=no-member
         self.output_button = QPushButton("Select Output Folder")
-        self.output_button.clicked.connect(self._select_output_dir)
-        self.run_button = QPushButton("Run / Go Reconstruction")
-        self.run_button.clicked.connect(self._run_reconstruction)
+        self.output_button.clicked.connect(self._select_output_dir) # pylint: disable=no-member
+        self.run_button = QPushButton("Run")
+        self.run_button.clicked.connect(self._run_reconstruction) # pylint: disable=no-member
         self.run_button.setMinimumHeight(38)
         self.run_button.setStyleSheet("font-weight: 700;")
 
@@ -178,7 +183,9 @@ class MainWindow(QMainWindow):
     def _build_status_group(self) -> QGroupBox:
         group = QGroupBox("Status")
         layout = QVBoxLayout(group)
-        self.status_label = QLabel("Ready. Select a video and output folder, then click 'Run / Go Reconstruction'.")
+        self.status_label = QLabel(
+            "Ready. Select a video and output folder, then click 'Run'."
+        )
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         return group
@@ -189,7 +196,9 @@ class MainWindow(QMainWindow):
         self.image_label = QLabel("No image yet")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumHeight(260)
-        self.image_label.setStyleSheet("border: 1px solid #999; background: #111; color: #eee;")
+        self.image_label.setStyleSheet(
+            "border: 1px solid #999; background: #111; color: #eee;"
+        )
         layout.addWidget(self.image_label)
         return group
 
@@ -214,7 +223,9 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _select_output_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select Output Folder", str(Path.cwd()))
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Output Folder", str(Path.cwd())
+        )
         if path:
             self.output_edit.setText(path)
 
@@ -224,10 +235,14 @@ class MainWindow(QMainWindow):
         output_text = self.output_edit.text().strip()
 
         if not video_path.exists():
-            QMessageBox.warning(self, "Missing Input", "Please select a valid video file.")
+            QMessageBox.warning(
+                self, "Missing Input", "Please select a valid video file."
+            )
             return
         if not output_text:
-            QMessageBox.warning(self, "Missing Output", "Please select an output directory.")
+            QMessageBox.warning(
+                self, "Missing Output", "Please select an output directory."
+            )
             return
         output_dir = Path(output_text)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -248,7 +263,7 @@ class MainWindow(QMainWindow):
         )
         self._worker.moveToThread(self._thread)
 
-        self._thread.started.connect(self._worker.run)
+        self._thread.started.connect(self._worker.run) # pylint: disable=no-member
         self._worker.progress.connect(self._set_status)
         self._worker.succeeded.connect(self._handle_success)
         self._worker.failed.connect(self._handle_error)
@@ -305,11 +320,11 @@ class MainWindow(QMainWindow):
             self._thread.deleteLater()
             self._thread = None
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resize_event(self, event: QResizeEvent) -> None:
         """Keep the preview image scaled when the window size changes."""
         super().resizeEvent(event)
         pixmap = self.image_label.pixmap()
-        if pixmap is not None and not pixmap.isNull():
+        if not pixmap.isNull():
             self.image_label.setPixmap(
                 pixmap.scaled(
                     self.image_label.size(),

@@ -83,7 +83,7 @@ In the UI:
 
 1. Select video file
 2. Select output folder
-3. Click `Run / Go Reconstruction`
+3. Click `Run`
 4. Review status, final image preview, and summary metrics
 
 The UI runs reconstruction in a background `QThread` so the window stays responsive.

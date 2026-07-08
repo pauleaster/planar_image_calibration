@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 
+def _empty_diagnostics() -> list[Mapping[str, object]]:
+    return []
+
 @dataclass(frozen=True)
 class RunSummary:
     """Compact metrics summary for a reconstruction run."""
@@ -25,7 +28,7 @@ class RunSummary:
     reference_frame_saved: bool
     reference_frame_path: str | None
     output_image: str | None = None
-    diagnostics: list[Mapping[str, object]] = field(default_factory=list)
+    diagnostics: list[Mapping[str, object]] = field(default_factory=_empty_diagnostics)
 
 
 def build_run_summary(
@@ -50,7 +53,9 @@ def build_run_summary(
         mean_sharpness=mean_sharpness,
         mean_inlier_ratio=mean_inlier_ratio,
         reference_frame_saved=reference_frame_saved,
-        reference_frame_path=str(reference_frame_path) if reference_frame_path is not None else None,
+        reference_frame_path=(
+            str(reference_frame_path) if reference_frame_path is not None else None
+        ),
         output_image=str(output_image) if output_image is not None else None,
         diagnostics=list(diagnostics or []),
     )

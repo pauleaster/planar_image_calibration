@@ -42,7 +42,7 @@ def iter_video_frames(
     if max_frames is not None and max_frames <= 0:
         raise ValueError("max_frames must be greater than zero when provided.")
 
-    capture = cv2.VideoCapture(str(video_path))  # pylint: disable=no-member
+    capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         raise ValueError(f"Could not open video file: {video_path}")
 
@@ -53,7 +53,7 @@ def iter_video_frames(
             if not ok:
                 break
 
-            timestamp_ms = float(capture.get(cv2.CAP_PROP_POS_MSEC))  # pylint: disable=no-member
+            timestamp_ms = float(capture.get(cv2.CAP_PROP_POS_MSEC))
             if frames_read % frame_step == 0:
                 yield FramePacket(
                     index=frames_read,

@@ -46,10 +46,10 @@ def estimate_homography(
     if ransac_reproj_threshold <= 0:
         raise ValueError("ransac_reproj_threshold must be greater than zero.")
 
-    homography_matrix, inlier_mask = cv2.findHomography(  # pylint: disable=no-member
+    homography_matrix, inlier_mask = cv2.findHomography(
         source_points.astype(np.float32),
         target_points.astype(np.float32),
-        cv2.RANSAC,  # pylint: disable=no-member
+        cv2.RANSAC,
         ransac_reproj_threshold,
     )
 

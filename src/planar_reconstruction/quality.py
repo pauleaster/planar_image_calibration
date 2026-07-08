@@ -1,7 +1,5 @@
 """Image-quality utilities for the planar reconstruction pipeline."""
 
-# pylint: disable=no-member
-
 from __future__ import annotations
 
 from typing import Any, cast
