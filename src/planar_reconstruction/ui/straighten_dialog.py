@@ -45,6 +45,11 @@ class CornerSelectionCanvas(QWidget):
         self._mouse_image_pos: QPointF | None = None
         self._mode = "bbox"
 
+        self._corner_drag_index: int | None = None
+        self._corner_drag_last_image_pos: QPointF | None = None
+        self._corner_drag_sensitivity = 0.35
+        self._corner_hit_radius_px = 14.0
+
         self.setMouseTracking(True)
         self.setMinimumSize(820, 520)
 
@@ -58,6 +63,11 @@ class CornerSelectionCanvas(QWidget):
         """Return selected corner points in click order."""
         return list(self._corner_points)
 
+    @property
+    def bounding_rect(self) -> QRectF | None:
+        """Return the currently selected image-space bounding rectangle, if set."""
+        return self._bounding_rect
+
     def reset_bbox(self) -> None:
         """Reset all interaction state and restart bbox selection."""
         self._mode = "bbox"
@@ -66,6 +76,8 @@ class CornerSelectionCanvas(QWidget):
         self._is_dragging_bbox = False
         self._drag_start = None
         self._drag_current = None
+        self._corner_drag_index = None
+        self._corner_drag_last_image_pos = None
         self.update()
 
     def reset_corners(self) -> None:
@@ -75,6 +87,8 @@ class CornerSelectionCanvas(QWidget):
             return
         self._mode = "corner"
         self._corner_points = []
+        self._corner_drag_index = None
+        self._corner_drag_last_image_pos = None
         self.update()
 
     def paintEvent(self, _event) -> None:  # type: ignore[override]
@@ -113,6 +127,12 @@ class CornerSelectionCanvas(QWidget):
         if self._mode == "corner":
             if self._bounding_rect is not None and not self._bounding_rect.contains(point):
                 return
+            drag_index = self._find_corner_index_near(event.position())
+            if drag_index is not None:
+                self._corner_drag_index = drag_index
+                self._corner_drag_last_image_pos = point
+                self.update()
+                return
             if len(self._corner_points) >= 4:
                 return
             self._corner_points.append(point)
@@ -126,11 +146,32 @@ class CornerSelectionCanvas(QWidget):
 
         if self._mode == "bbox" and self._is_dragging_bbox and point is not None:
             self._drag_current = point
+
+        if (
+            self._mode == "corner"
+            and self._corner_drag_index is not None
+            and point is not None
+            and self._corner_drag_last_image_pos is not None
+        ):
+            dx = point.x() - self._corner_drag_last_image_pos.x()
+            dy = point.y() - self._corner_drag_last_image_pos.y()
+            current = self._corner_points[self._corner_drag_index]
+
+            # Dampen drag deltas so small hand movement enables finer corner control.
+            moved = QPointF(
+                current.x() + dx * self._corner_drag_sensitivity,
+                current.y() + dy * self._corner_drag_sensitivity,
+            )
+            self._corner_points[self._corner_drag_index] = self._clamp_corner_to_bounds(moved)
+            self._corner_drag_last_image_pos = point
         self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         """Commit bbox selection on drag release."""
         if self._mode != "bbox" or event.button() != Qt.MouseButton.LeftButton:
+            if self._mode == "corner" and event.button() == Qt.MouseButton.LeftButton:
+                self._corner_drag_index = None
+                self._corner_drag_last_image_pos = None
             return
         if not self._is_dragging_bbox:
             return
@@ -203,6 +244,32 @@ class CornerSelectionCanvas(QWidget):
             + (point.y() / float(max(1, self._image.height() - 1)))
             * self._display_rect.height(),
         )
+
+    def _find_corner_index_near(self, widget_pos: QPointF) -> int | None:
+        if not self._corner_points:
+            return None
+
+        for index, corner in enumerate(self._corner_points):
+            handle = self._image_to_widget(corner)
+            if (
+                abs(handle.x() - widget_pos.x()) <= self._corner_hit_radius_px
+                and abs(handle.y() - widget_pos.y()) <= self._corner_hit_radius_px
+            ):
+                return index
+        return None
+
+    def _clamp_corner_to_bounds(self, point: QPointF) -> QPointF:
+        clamped_x = min(max(0.0, point.x()), float(self._image.width() - 1))
+        clamped_y = min(max(0.0, point.y()), float(self._image.height() - 1))
+        clamped = QPointF(clamped_x, clamped_y)
+
+        if self._bounding_rect is None:
+            return clamped
+
+        rect = self._bounding_rect
+        bounded_x = min(max(float(rect.left()), clamped.x()), float(rect.right()))
+        bounded_y = min(max(float(rect.top()), clamped.y()), float(rect.bottom()))
+        return QPointF(bounded_x, bounded_y)
 
     def _draw_bounding_rect(self, painter: QPainter) -> None:
         if self._bounding_rect is not None:
@@ -397,6 +464,19 @@ class StraightenImageDialog(QDialog):
             dtype=np.float32,
         )
 
+        preserve_corners: npt.NDArray[np.float32] | None = None
+        if self.canvas.bounding_rect is not None:
+            rect = self.canvas.bounding_rect
+            preserve_corners = np.array(
+                [
+                    [float(rect.left()), float(rect.top())],
+                    [float(rect.right()), float(rect.top())],
+                    [float(rect.right()), float(rect.bottom())],
+                    [float(rect.left()), float(rect.bottom())],
+                ],
+                dtype=np.float32,
+            )
+
         original_mat = cv2.imread(str(self._image_path), cv2.IMREAD_COLOR)
         if original_mat is None:
             QMessageBox.critical(
@@ -411,7 +491,11 @@ class StraightenImageDialog(QDialog):
         )
 
         try:
-            result = straighten_full_frame(original, source)
+            result = straighten_full_frame(
+                original,
+                source,
+                preserve_corners=preserve_corners,
+            )
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid Selection", str(exc))
             return

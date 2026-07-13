@@ -37,6 +37,7 @@ def order_corners(points: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
 def straighten_full_frame(
     image: npt.NDArray[np.uint8],
     selected_points: npt.NDArray[np.float32],
+    preserve_corners: npt.NDArray[np.float32] | None = None,
 ) -> StraightenTransformResult:
     """Rectify using selected corners and warp the full frame onto an expanded canvas.
 
@@ -80,16 +81,21 @@ def straighten_full_frame(
 
     base_h = cv2.getPerspectiveTransform(ordered, destination)
 
-    source_h, source_w = image.shape[:2]
-    full_corners: npt.NDArray[np.float32] = np.array(
-        [
-            [0.0, 0.0],
-            [source_w - 1.0, 0.0],
-            [source_w - 1.0, source_h - 1.0],
-            [0.0, source_h - 1.0],
-        ],
-        dtype=np.float32,
-    )
+    if preserve_corners is None:
+        source_h, source_w = image.shape[:2]
+        full_corners: npt.NDArray[np.float32] = np.array(
+            [
+                [0.0, 0.0],
+                [source_w - 1.0, 0.0],
+                [source_w - 1.0, source_h - 1.0],
+                [0.0, source_h - 1.0],
+            ],
+            dtype=np.float32,
+        )
+    else:
+        if preserve_corners.shape != (4, 2):
+            raise ValueError("Preserve corners must be shape (4, 2).")
+        full_corners = preserve_corners.astype(np.float32)
 
     transformed_full = cv2.perspectiveTransform(
         full_corners.reshape((1, 4, 2)), base_h
